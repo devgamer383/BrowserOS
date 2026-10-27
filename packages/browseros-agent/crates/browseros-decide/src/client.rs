@@ -274,6 +274,11 @@ fn record(asking: &Request<'_>) {
 }
 
 impl Jev {
+    /// Cloudflare Workers AI Clef-Flash model identifier.
+    pub const CLOUDFLARE_CLEF_FLASH: &'static str = "@cf/cloudflare/clef-flash";
+    /// Cloudflare Workers AI Clef model identifier.
+    pub const CLOUDFLARE_CLEF: &'static str = "@cf/cloudflare/clef";
+
     pub fn new(token: impl Into<String>) -> Self {
         Self {
             http: reqwest::Client::new(),
@@ -283,7 +288,8 @@ impl Jev {
         }
     }
 
-    /// Points this client at another endpoint, for tests against a local stub.
+    /// Points this client at another endpoint, for tests against a local stub or custom API gateway.
+    /// This bypasses any /models route checks.
     pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
         self.endpoint = endpoint.into();
         self
@@ -292,6 +298,37 @@ impl Jev {
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = model.into();
         self
+    }
+
+    /// Configures a client targeting Cloudflare Workers AI Clef / Clef-Flash.
+    pub fn for_cloudflare(account_id: &str, token: impl Into<String>, model: Option<&str>) -> Self {
+        let model_name = model.unwrap_or(Self::CLOUDFLARE_CLEF_FLASH);
+        let endpoint = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model_name}"
+        );
+        Self::new(token)
+            .with_endpoint(endpoint)
+            .with_model(model_name)
+    }
+
+    /// Builds a client dynamically from environment variables (Cloudflare Clef, custom endpoint, or Jev).
+    pub fn from_env() -> Self {
+        if let (Ok(account_id), Ok(token)) = (
+            std::env::var("CLOUDFLARE_ACCOUNT_ID"),
+            std::env::var("CLOUDFLARE_API_TOKEN"),
+        ) {
+            let model = std::env::var("CLOUDFLARE_CLEF_MODEL").ok();
+            return Self::for_cloudflare(&account_id, token, model.as_deref());
+        }
+
+        let token = std::env::var("DECISION_MODEL_TOKEN")
+            .or_else(|_| std::env::var("JEV_TOKEN"))
+            .unwrap_or_default();
+        let endpoint = std::env::var("DECISION_MODEL_ENDPOINT")
+            .unwrap_or_else(|_| ENDPOINT.to_string());
+        let model = std::env::var("DECISION_MODEL_NAME")
+            .unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        Self::new(token).with_endpoint(endpoint).with_model(model)
     }
 
     /// Asks every question about one state, in a single request.

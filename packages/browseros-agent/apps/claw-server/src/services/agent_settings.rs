@@ -150,7 +150,38 @@ impl AgentSettingsStore {
         {
             return Some(token.clone());
         }
-        self.jev_token_from_environment.clone()
+        if let Some(token) = &self.jev_token_from_environment {
+            return Some(token.clone());
+        }
+        std::env::var("DECISION_MODEL_TOKEN")
+            .or_else(|_| std::env::var("CLOUDFLARE_API_TOKEN"))
+            .ok()
+    }
+
+    /// Custom decision model endpoint URL (bypassing /models checks)
+    #[must_use]
+    pub fn decision_endpoint(&self) -> Option<String> {
+        std::env::var("DECISION_MODEL_ENDPOINT").ok()
+    }
+
+    /// Custom decision model name
+    #[must_use]
+    pub fn decision_model(&self) -> Option<String> {
+        std::env::var("DECISION_MODEL_NAME")
+            .or_else(|_| std::env::var("CLOUDFLARE_CLEF_MODEL"))
+            .ok()
+    }
+
+    /// Cloudflare account ID if using Cloudflare Workers AI Clef
+    #[must_use]
+    pub fn cloudflare_account_id(&self) -> Option<String> {
+        std::env::var("CLOUDFLARE_ACCOUNT_ID").ok()
+    }
+
+    /// Cloudflare API token if using Cloudflare Workers AI Clef
+    #[must_use]
+    pub fn cloudflare_api_token(&self) -> Option<String> {
+        std::env::var("CLOUDFLARE_API_TOKEN").ok()
     }
 
     /// Saves first and only then updates the live value, so a failed save changes nothing.

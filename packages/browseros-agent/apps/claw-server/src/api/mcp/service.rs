@@ -522,7 +522,22 @@ impl ClawMcpService {
         };
         let run = browseros_decide::run::Run::new(goal, budget).offering(offered);
 
-        let jev = browseros_decide::client::Jev::new(token);
+        let jev = if let (Some(account_id), Some(cf_token)) = (
+            self.state.agent_settings.cloudflare_account_id(),
+            self.state.agent_settings.cloudflare_api_token(),
+        ) {
+            let model = self.state.agent_settings.decision_model();
+            browseros_decide::client::Jev::for_cloudflare(&account_id, &cf_token, model.as_deref())
+        } else {
+            let mut j = browseros_decide::client::Jev::new(token);
+            if let Some(endpoint) = self.state.agent_settings.decision_endpoint() {
+                j = j.with_endpoint(endpoint);
+            }
+            if let Some(model) = self.state.agent_settings.decision_model() {
+                j = j.with_model(model);
+            }
+            j
+        };
         let outcome = browseros_decide::pursue::advance(&jev, &driver, run).await;
         let told = browseros_decide::report::tell(&outcome);
 
