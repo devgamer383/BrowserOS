@@ -36,6 +36,11 @@ export interface AgentSettings {
      * @memberof AgentSettings
      */
     jevTokenSource: JevTokenSource;
+    decisionProvider?: string;
+    decisionModel?: string;
+    decisionEndpoint?: string;
+    cloudflareAccountId?: string;
+    hasCloudflareToken?: boolean;
 }
 
 /**
@@ -60,7 +65,12 @@ export interface SaveJevTokenRequest {
      * @type {string}
      * @memberof SaveJevTokenRequest
      */
-    token: string;
+    token?: string;
+    provider?: string;
+    model?: string;
+    endpoint?: string;
+    cloudflareAccountId?: string;
+    cloudflareApiToken?: string;
 }
 
 /**

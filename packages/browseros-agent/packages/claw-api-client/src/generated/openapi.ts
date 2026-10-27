@@ -710,6 +710,11 @@ export interface components {
       /** @description Whether successful MCP tool replies include a tip to close the task's tab group when finished. */
       taskCleanupTipEnabled: boolean
       jevTokenSource: components['schemas']['JevTokenSource']
+      decisionProvider?: string
+      decisionModel?: string
+      decisionEndpoint?: string
+      cloudflareAccountId?: string
+      hasCloudflareToken?: boolean
     }
     /**
      * @description Where the decision model credential comes from, which decides whether the pursue tool is offered at all. "settings" is a token saved through this API, which takes precedence. "environment" is JEV_TOKEN in the server's environment. "none" means pursue is not offered. The token itself is never returned.
@@ -718,7 +723,12 @@ export interface components {
     JevTokenSource: 'settings' | 'environment' | 'none'
     SaveJevTokenRequest: {
       /** @description The decision model credential. Write only: no endpoint returns it. Saving one takes precedence over JEV_TOKEN in the server's environment. */
-      token: string
+      token?: string
+      provider?: string
+      model?: string
+      endpoint?: string
+      cloudflareAccountId?: string
+      cloudflareApiToken?: string
     }
     UpdateAgentSettingsRequest: {
       /** @description Omit to preserve the saved human help preference. */

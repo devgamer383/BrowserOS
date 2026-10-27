@@ -46,11 +46,16 @@ impl HumanHelp {
     }
 }
 
-/// The credential file's shape. One key, so the file explains itself to whoever finds it.
-#[derive(Serialize, Deserialize, Default)]
+/// The credential and decision engine file's shape.
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default, rename_all = "camelCase")]
 struct TokenFile {
     jev_token: String,
+    provider: Option<String>,
+    model: Option<String>,
+    endpoint: Option<String>,
+    cloudflare_account_id: Option<String>,
+    cloudflare_api_token: Option<String>,
 }
 
 /// The file's shape. A missing key keeps human help on, so `{}` changes nothing.
@@ -83,6 +88,11 @@ pub struct AgentSettingsStore {
     /// `JEV_TOKEN` as it was at startup, read once so precedence is decided in
     /// one place rather than wherever somebody reaches for the environment.
     jev_token_from_environment: Option<String>,
+    provider: RwLock<Option<String>>,
+    model: RwLock<Option<String>>,
+    endpoint: RwLock<Option<String>>,
+    cloudflare_account_id: RwLock<Option<String>>,
+    cloudflare_api_token: RwLock<Option<String>>,
     /// Serializes saves, so the file and the live value never disagree.
     writes: Mutex<()>,
 }
@@ -110,20 +120,32 @@ impl AgentSettingsStore {
         // A credential that cannot be read is the same as no credential: a server that will
         // not start is worse than a server without the loop.
         let saved = match files.read_json::<TokenFile>(JEV_TOKEN_FILE).await {
-            Ok(file) => usable(&file.jev_token),
-            Err(AppError::StorageNotFound(_)) => None,
+            Ok(file) => file,
+            Err(AppError::StorageNotFound(_)) => TokenFile::default(),
             Err(error) => {
                 tracing::warn!(%error, "saved decision model token unreadable; ignoring it");
-                None
+                TokenFile::default()
             }
         };
+        let token = usable(&saved.jev_token);
+        let cf_token = saved.cloudflare_api_token.as_deref().and_then(usable);
+        let cf_id = saved.cloudflare_account_id.as_deref().and_then(usable);
+        let ep = saved.endpoint.as_deref().and_then(usable);
+        let mdl = saved.model.as_deref().and_then(usable);
+        let prov = saved.provider.as_deref().and_then(usable);
+        let is_saved = token.is_some() || cf_token.is_some() || ep.is_some();
         Self {
             files,
             human_help_enabled: AtomicBool::new(settings.human_help_enabled),
             task_cleanup_tip_enabled: AtomicBool::new(settings.task_cleanup_tip_enabled),
-            jev_token_saved: AtomicBool::new(saved.is_some()),
-            jev_token: RwLock::new(saved),
+            jev_token_saved: AtomicBool::new(is_saved),
+            jev_token: RwLock::new(token),
             jev_token_from_environment: from_environment.as_deref().and_then(usable),
+            provider: RwLock::new(prov),
+            model: RwLock::new(mdl),
+            endpoint: RwLock::new(ep),
+            cloudflare_account_id: RwLock::new(cf_id),
+            cloudflare_api_token: RwLock::new(cf_token),
             writes: Mutex::new(()),
         }
     }
@@ -133,7 +155,10 @@ impl AgentSettingsStore {
     pub fn jev_token_source(&self) -> TokenSource {
         if self.jev_token_saved.load(Ordering::Acquire) {
             TokenSource::Settings
-        } else if self.jev_token_from_environment.is_some() {
+        } else if self.jev_token_from_environment.is_some()
+            || self.cloudflare_api_token().is_some()
+            || self.decision_endpoint().is_some()
+        {
             TokenSource::Environment
         } else {
             TokenSource::None
@@ -150,6 +175,11 @@ impl AgentSettingsStore {
         {
             return Some(token.clone());
         }
+        if let Ok(saved_cf) = self.cloudflare_api_token.read()
+            && let Some(token) = saved_cf.as_ref()
+        {
+            return Some(token.clone());
+        }
         if let Some(token) = &self.jev_token_from_environment {
             return Some(token.clone());
         }
@@ -158,15 +188,45 @@ impl AgentSettingsStore {
             .ok()
     }
 
+    /// Decision provider (e.g. "cloudflare", "typesafe", or "custom").
+    #[must_use]
+    pub fn decision_provider(&self) -> Option<String> {
+        if let Ok(guard) = self.provider.read()
+            && let Some(p) = guard.as_ref()
+        {
+            return Some(p.clone());
+        }
+        if self.cloudflare_api_token().is_some() || self.cloudflare_account_id().is_some() {
+            return Some("cloudflare".to_string());
+        }
+        if self.decision_endpoint().is_some() {
+            return Some("custom".to_string());
+        }
+        if self.jev_credential().is_some() {
+            return Some("typesafe".to_string());
+        }
+        None
+    }
+
     /// Custom decision model endpoint URL (bypassing /models checks)
     #[must_use]
     pub fn decision_endpoint(&self) -> Option<String> {
+        if let Ok(guard) = self.endpoint.read()
+            && let Some(ep) = guard.as_ref()
+        {
+            return Some(ep.clone());
+        }
         std::env::var("DECISION_MODEL_ENDPOINT").ok()
     }
 
     /// Custom decision model name
     #[must_use]
     pub fn decision_model(&self) -> Option<String> {
+        if let Ok(guard) = self.model.read()
+            && let Some(m) = guard.as_ref()
+        {
+            return Some(m.clone());
+        }
         std::env::var("DECISION_MODEL_NAME")
             .or_else(|_| std::env::var("CLOUDFLARE_CLEF_MODEL"))
             .ok()
@@ -175,32 +235,84 @@ impl AgentSettingsStore {
     /// Cloudflare account ID if using Cloudflare Workers AI Clef
     #[must_use]
     pub fn cloudflare_account_id(&self) -> Option<String> {
+        if let Ok(guard) = self.cloudflare_account_id.read()
+            && let Some(id) = guard.as_ref()
+        {
+            return Some(id.clone());
+        }
         std::env::var("CLOUDFLARE_ACCOUNT_ID").ok()
     }
 
     /// Cloudflare API token if using Cloudflare Workers AI Clef
     #[must_use]
     pub fn cloudflare_api_token(&self) -> Option<String> {
+        if let Ok(guard) = self.cloudflare_api_token.read()
+            && let Some(token) = guard.as_ref()
+        {
+            return Some(token.clone());
+        }
         std::env::var("CLOUDFLARE_API_TOKEN").ok()
     }
 
     /// Saves first and only then updates the live value, so a failed save changes nothing.
     pub async fn set_jev_token(&self, token: &str) -> AppResult<()> {
-        let _write = self.writes.lock().await;
-        // Guarded here as well as at the edge, because a blank token stored would read as
-        // present and offer a tool that cannot work.
         let token = usable(token).ok_or_else(|| AppError::Http {
             status: axum::http::StatusCode::BAD_REQUEST,
             message: format!("token must be between 1 and {MAX_JEV_TOKEN} characters"),
         })?;
+        self.set_decision_config(
+            Some(&token),
+            Some("typesafe"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Persists decision configuration (Cloudflare Clef, TypeSafe Jev, or Custom endpoint).
+    pub async fn set_decision_config(
+        &self,
+        token: Option<&str>,
+        provider: Option<&str>,
+        model: Option<&str>,
+        endpoint: Option<&str>,
+        cloudflare_account_id: Option<&str>,
+        cloudflare_api_token: Option<&str>,
+    ) -> AppResult<()> {
+        let _write = self.writes.lock().await;
         let file = TokenFile {
-            jev_token: token.clone(),
+            jev_token: token.and_then(usable).unwrap_or_default(),
+            provider: provider.and_then(usable),
+            model: model.and_then(usable),
+            endpoint: endpoint.and_then(usable),
+            cloudflare_account_id: cloudflare_account_id.and_then(usable),
+            cloudflare_api_token: cloudflare_api_token.and_then(usable),
         };
         self.files.write_json_private(JEV_TOKEN_FILE, &file).await?;
         if let Ok(mut live) = self.jev_token.write() {
-            *live = Some(token);
+            *live = usable(&file.jev_token);
         }
-        self.jev_token_saved.store(true, Ordering::Release);
+        if let Ok(mut live) = self.provider.write() {
+            *live = file.provider.clone();
+        }
+        if let Ok(mut live) = self.model.write() {
+            *live = file.model.clone();
+        }
+        if let Ok(mut live) = self.endpoint.write() {
+            *live = file.endpoint.clone();
+        }
+        if let Ok(mut live) = self.cloudflare_account_id.write() {
+            *live = file.cloudflare_account_id.clone();
+        }
+        if let Ok(mut live) = self.cloudflare_api_token.write() {
+            *live = file.cloudflare_api_token.clone();
+        }
+        let is_saved = usable(&file.jev_token).is_some()
+            || file.cloudflare_api_token.is_some()
+            || file.endpoint.is_some();
+        self.jev_token_saved.store(is_saved, Ordering::Release);
         Ok(())
     }
 
@@ -209,6 +321,21 @@ impl AgentSettingsStore {
         let _write = self.writes.lock().await;
         self.files.remove_file(JEV_TOKEN_FILE).await?;
         if let Ok(mut live) = self.jev_token.write() {
+            *live = None;
+        }
+        if let Ok(mut live) = self.provider.write() {
+            *live = None;
+        }
+        if let Ok(mut live) = self.model.write() {
+            *live = None;
+        }
+        if let Ok(mut live) = self.endpoint.write() {
+            *live = None;
+        }
+        if let Ok(mut live) = self.cloudflare_account_id.write() {
+            *live = None;
+        }
+        if let Ok(mut live) = self.cloudflare_api_token.write() {
             *live = None;
         }
         self.jev_token_saved.store(false, Ordering::Release);

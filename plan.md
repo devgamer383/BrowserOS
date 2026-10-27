@@ -158,6 +158,33 @@ flowchart LR
    - Add 3-step action history masking to prevent loop traps.
 4. **`claw-server/src/services/agent_settings.rs` & `service.rs`**:
    - Wire Cloudflare credentials (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`) and dynamic endpoint/model settings into `handle_pursue()`.
-5. **Advanced Feature Integration**:
+5. **Web Settings UI & Contract Integration**:
+   - Wire multi-provider selection (Cloudflare Clef, TypeSafe Jev, Custom) into `apps/claw-app/screens/settings/UltrafastKey.tsx`.
+   - Update `apps/claw-app/screens/settings/Settings.tsx` to un-gate decision settings and provide direct configuration.
+   - Update OpenAPI contracts in `contracts/claw-api/schemas/settings.yaml`, `crates/claw-api/src/generated/settings.rs`, and TypeScript client libraries.
+   - Save credentials and endpoint configuration persistently via `save_decision_config` in `agent_settings.rs`.
+6. **Advanced Feature Integration**:
    - Connect the Macro Distiller in `framework.rs`.
    - Implement origin-bound credential autopilot in `credentials.rs`.
+
+---
+
+## 9. Web Settings UI Architecture
+
+```mermaid
+flowchart TD
+    UI["Web Settings UI (claw-app)"] --> Tabs["Provider Selector Tabs"]
+    Tabs -->|Cloudflare| CF["Cloudflare Workers AI Form<br/>(Account ID, API Token, Clef/Clef-Flash)"]
+    Tabs -->|TypeSafe| TS["TypeSafe Form<br/>(Ultrafast Key)"]
+    Tabs -->|Custom| CS["Custom Endpoint Form<br/>(URL, Model Name, Token)"]
+
+    CF -->|PUT /api/v1/settings/agent/jev-token| API["claw-server REST API"]
+    TS -->|PUT /api/v1/settings/agent/jev-token| API
+    CS -->|PUT /api/v1/settings/agent/jev-token| API
+
+    API --> Store["AgentSettingsStore<br/>(jev-token.json)"]
+    Store -->|"Dynamic Offer"| Tools["MCP tools/list<br/>(Offers pursue without restart)"]
+    Store -->|"Dynamic Client Init"| Engine["handle_pursue()<br/>(Jev / Clef / Custom Engine)"]
+```
+
+Users can configure, replace, or remove decision providers directly through the BrowserOS Settings panel with zero command-line configuration required.

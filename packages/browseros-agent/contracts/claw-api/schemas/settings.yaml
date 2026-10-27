@@ -32,6 +32,21 @@ AgentSettings:
       description: Whether successful MCP tool replies include a tip to close the task's tab group when finished.
     jevTokenSource:
       $ref: '#/JevTokenSource'
+    decisionProvider:
+      type: string
+      description: Active decision model provider ("cloudflare", "typesafe", or "custom").
+    decisionModel:
+      type: string
+      description: Active decision model identifier (e.g. "@cf/cloudflare/clef-flash").
+    decisionEndpoint:
+      type: string
+      description: Custom decision model endpoint URL if configured.
+    cloudflareAccountId:
+      type: string
+      description: Cloudflare Account ID if configured.
+    hasCloudflareToken:
+      type: boolean
+      description: Whether a Cloudflare API token is saved.
 JevTokenSource:
   type: string
   enum: [settings, environment, none]
@@ -43,14 +58,27 @@ JevTokenSource:
 SaveJevTokenRequest:
   type: object
   additionalProperties: false
-  required: [token]
   properties:
     token:
       type: string
-      minLength: 1
       description: >-
         The decision model credential. Write only: no endpoint returns it. Saving one takes
         precedence over JEV_TOKEN in the server's environment.
+    provider:
+      type: string
+      description: Provider identifier ("cloudflare", "typesafe", or "custom").
+    model:
+      type: string
+      description: Model name or identifier (e.g. "@cf/cloudflare/clef-flash").
+    endpoint:
+      type: string
+      description: Custom zero-registry decision endpoint URL.
+    cloudflareAccountId:
+      type: string
+      description: Cloudflare Account ID.
+    cloudflareApiToken:
+      type: string
+      description: Cloudflare Workers AI API Token.
 UpdateAgentSettingsRequest:
   type: object
   additionalProperties: false

@@ -88,7 +88,10 @@ pub(super) async fn save_jev_token(
             "token must be a string",
         )
     })?;
-    if payload.token.trim().is_empty() || payload.token.trim().len() > MAX_JEV_TOKEN {
+    let token_trimmed = payload.token.as_deref().map(str::trim).unwrap_or("");
+    let cf_token_trimmed = payload.cloudflare_api_token.as_deref().map(str::trim).unwrap_or("");
+    let ep_trimmed = payload.endpoint.as_deref().map(str::trim).unwrap_or("");
+    if token_trimmed.is_empty() && cf_token_trimmed.is_empty() && ep_trimmed.is_empty() {
         return Err(error(
             &request_id,
             StatusCode::BAD_REQUEST,
@@ -98,7 +101,14 @@ pub(super) async fn save_jev_token(
     }
     state
         .agent_settings
-        .set_jev_token(&payload.token)
+        .set_decision_config(
+            payload.token.as_deref(),
+            payload.provider.as_deref(),
+            payload.model.as_deref(),
+            payload.endpoint.as_deref(),
+            payload.cloudflare_account_id.as_deref(),
+            payload.cloudflare_api_token.as_deref(),
+        )
         .await
         .map_err(|source| internal(&request_id, source))?;
     Ok(Json(settings_of(&state)))
@@ -124,11 +134,17 @@ fn to_contract_state(state: crate::analytics::TelemetryState) -> TelemetryState 
 /// The settings as the client sees them, read from the store rather than from whatever the
 /// handler happened to be given, so a reply cannot disagree with what the server will do next.
 fn settings_of(state: &AppState) -> AgentSettings {
-    AgentSettings::new(
+    let mut settings = AgentSettings::new(
         state.agent_settings.human_help().is_enabled(),
         state.agent_settings.task_cleanup_tip_enabled(),
         to_contract_source(state.agent_settings.jev_token_source()),
-    )
+    );
+    settings.decision_provider = state.agent_settings.decision_provider();
+    settings.decision_model = state.agent_settings.decision_model();
+    settings.decision_endpoint = state.agent_settings.decision_endpoint();
+    settings.cloudflare_account_id = state.agent_settings.cloudflare_account_id();
+    settings.has_cloudflare_token = Some(state.agent_settings.cloudflare_api_token().is_some());
+    settings
 }
 
 fn to_contract_source(source: TokenSource) -> JevTokenSource {

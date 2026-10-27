@@ -65,6 +65,17 @@ export function Settings() {
     () => false,
   )
 
+  const isConfiguredOrUnlocked =
+    typeof window !== 'undefined' &&
+    (window.localStorage?.getItem('browseros.enable_decision_settings') === 'true' ||
+      Boolean(
+        settings.data?.decisionProvider ||
+          settings.data?.cloudflareAccountId ||
+          settings.data?.decisionEndpoint,
+      ))
+
+  const showAdvanced = (tokenFieldEnabled || isConfiguredOrUnlocked) && settings.data
+
   return (
     <Page>
       <PageHeader title="Settings" />
@@ -73,11 +84,11 @@ export function Settings() {
       <StorageSettings />
       <PrivacySettings />
       <HelpSettings />
-      {tokenFieldEnabled && settings.data ? (
-        <Collapsible className="rounded-2xl border border-border-2 bg-card shadow-card">
+      {showAdvanced ? (
+        <Collapsible className="rounded-2xl border border-border-2 bg-card shadow-card" defaultOpen>
           <CollapsibleTrigger className="flex w-full items-center gap-2.5 rounded-2xl px-[18px] py-3.5 text-left font-semibold text-[15px] text-ink-2 outline-none hover:text-cyanotype-ink focus-visible:ring-2 focus-visible:ring-ring">
             <SlidersHorizontal aria-hidden className="size-[15px]" />
-            <span className="flex-1">Advanced</span>
+            <span className="flex-1">Decision Models & Fast Autopilot (Clef & Jev)</span>
             <CollapsibleIndicator>
               <ChevronDown aria-hidden className="size-4" />
             </CollapsibleIndicator>
@@ -88,7 +99,22 @@ export function Settings() {
             />
           </CollapsibleContent>
         </Collapsible>
-      ) : null}
+      ) : (
+        <div className="flex justify-end px-2 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.localStorage?.setItem('browseros.enable_decision_settings', 'true')
+                window.dispatchEvent(new Event('storage'))
+              }
+            }}
+            className="text-xs text-ink-3 hover:text-cyanotype-ink transition-colors"
+          >
+            Configure Decision Models (Clef / Jev)
+          </button>
+        </div>
+      )}
     </Page>
   )
 }

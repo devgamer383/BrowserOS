@@ -22,6 +22,16 @@ pub struct AgentSettings {
     pub task_cleanup_tip_enabled: bool,
     #[serde(rename = "jevTokenSource")]
     pub jev_token_source: models::JevTokenSource,
+    #[serde(rename = "decisionProvider", default, skip_serializing_if = "Option::is_none")]
+    pub decision_provider: Option<String>,
+    #[serde(rename = "decisionEndpoint", default, skip_serializing_if = "Option::is_none")]
+    pub decision_endpoint: Option<String>,
+    #[serde(rename = "decisionModel", default, skip_serializing_if = "Option::is_none")]
+    pub decision_model: Option<String>,
+    #[serde(rename = "cloudflareAccountId", default, skip_serializing_if = "Option::is_none")]
+    pub cloudflare_account_id: Option<String>,
+    #[serde(rename = "hasCloudflareToken", default, skip_serializing_if = "Option::is_none")]
+    pub has_cloudflare_token: Option<bool>,
 }
 
 impl AgentSettings {
@@ -35,6 +45,11 @@ impl AgentSettings {
             human_help_enabled,
             task_cleanup_tip_enabled,
             jev_token_source,
+            decision_provider: None,
+            decision_endpoint: None,
+            decision_model: None,
+            cloudflare_account_id: None,
+            has_cloudflare_token: None,
         }
     }
 }
@@ -70,13 +85,30 @@ impl Default for JevTokenSource {
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SaveJevTokenRequest {
     /// The decision model credential. Write only: no endpoint returns it. Saving one takes precedence over JEV_TOKEN in the server's environment.
-    #[serde(rename = "token")]
-    pub token: String,
+    #[serde(rename = "token", default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(rename = "provider", default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(rename = "model", default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(rename = "endpoint", default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    #[serde(rename = "cloudflareAccountId", default, skip_serializing_if = "Option::is_none")]
+    pub cloudflare_account_id: Option<String>,
+    #[serde(rename = "cloudflareApiToken", default, skip_serializing_if = "Option::is_none")]
+    pub cloudflare_api_token: Option<String>,
 }
 
 impl SaveJevTokenRequest {
     pub fn new(token: String) -> SaveJevTokenRequest {
-        SaveJevTokenRequest { token }
+        SaveJevTokenRequest {
+            token: Some(token),
+            provider: None,
+            model: None,
+            endpoint: None,
+            cloudflare_account_id: None,
+            cloudflare_api_token: None,
+        }
     }
 }
 
